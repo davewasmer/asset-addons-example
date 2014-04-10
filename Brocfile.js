@@ -14,6 +14,46 @@ var preprocessCss = p.preprocessCss;
 var preprocessTemplates = p.preprocessTemplates;
 var preprocessJs = p.preprocessJs;
 
+var bowerConfig = require('bower-config')
+var fs = require('fs')
+var path = require('path')
+
+function findAddons() {
+
+  // Get the bower directory (vendor usually)
+  var bowerDir = bowerConfig.read().directory // note: this relies on cwd
+  if (bowerDir == null) throw new Error('Bower did not return a directory')
+
+  // Get only the directories
+  return fs.readdirSync(bowerDir).filter(function bowerDirectoriesOnly(entry) {
+    return fs.statSync(path.join(bowerDir, entry)).isDirectory()
+  })
+
+  // Grab all the bower configs
+  .map(function parseBowerConfig(dir){
+    try {
+      return JSON.parse(fs.readFileSync(path.join(bowerDir, dir, '.bower.json'), 'utf-8'))
+    } catch (e) {
+      return JSON.parse(fs.readFileSync(path.join(bowerDir, dir, 'bower.json'), 'utf-8'))
+    }
+  })
+
+  // Find only ember-addon tagged packages
+  .filter(function selectOnlyAddons(config) {
+    return Array.isArray(config.keywords) && 
+           (config.keywords.indexOf('ember-addon') !== -1)
+  })
+
+  // Build addon objects with some useful info
+  .map(function buildAddonObjects(config) {
+    return {
+      dir: path.join(bowerDir, config.name),
+      prefix: config.name
+    }
+  });
+
+}
+
 module.exports = function (broccoli) {
 
   var prefix = 'asset-addons-example';
@@ -39,7 +79,18 @@ module.exports = function (broccoli) {
     destDir: prefix
   });
 
-  app = preprocessTemplates(app);
+  var addons = findAddons();
+  var addonTrees = [];
+  addons.map(function(addon) {
+    addonTrees.push(pickFiles(addon.dir, {
+      srcDir: '/',
+      destDir: addon.prefix
+    }));
+  });
+
+  var appAndAddons = mergeTrees([ app ].concat(addonTrees));
+
+  appAndAddons = preprocessTemplates(appAndAddons);
 
   var config = pickFiles('config', { // Don't pick anything, just watch config folder
     srcDir: '/',
@@ -47,7 +98,7 @@ module.exports = function (broccoli) {
     destDir: '/'
   });
 
-  var sourceTrees = [app, config, 'vendor'].concat(broccoli.bowerTrees());
+  var sourceTrees = [appAndAddons, config, 'vendor'].concat(broccoli.bowerTrees());
   var appAndDependencies = mergeTrees(sourceTrees, { overwrite: true });
 
   // JavaScript
@@ -64,15 +115,18 @@ module.exports = function (broccoli) {
 
   var applicationJs = preprocessJs(appAndDependencies, '/', prefix);
 
+  var inputFiles = [prefix + '/**/*.js'];
+  addons.map(function(addon) {
+    inputFiles.push(addon.prefix + '/**/*.js');
+  });
+
   applicationJs = compileES6(applicationJs, {
     loaderFile: 'loader/loader.js',
     ignoredModules: [
       'ember/resolver',
       'ic-ajax'
     ],
-    inputFiles: [
-      prefix + '/**/*.js'
-    ],
+    inputFiles: inputFiles,
     legacyFilesToAppend: legacyFilesToAppend,
     wrapInEval: env !== 'production',
     outputFile: '/assets/app.js'
