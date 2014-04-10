@@ -4,7 +4,8 @@ module.exports = function(environment) {
     FEATURES: {
       // Here you can enable experimental featuers on an ember canary build
       // e.g. 'with-controller': true
-    }
+    },
+    cascade: [ 'mock-asset-addon' ]
   };
 
   if (environment === 'development') {

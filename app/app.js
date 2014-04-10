@@ -9,6 +9,7 @@ var App = Ember.Application.extend({
   // LOG_TRANSITIONS_INTERNAL: true,
   LOG_VIEW_LOOKUPS: true,
   modulePrefix: 'asset-addons-example', // TODO: loaded via config
+  cascade: ENV.cascade,
   Resolver: Resolver
 });
 
